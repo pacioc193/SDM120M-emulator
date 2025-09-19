@@ -74,8 +74,17 @@ String WebServerManager::generateIndexHtml() {
 
             <hr style="margin: 30px 0;">
 
-            <h2>Home Assistant Configuration</h2>
+            <h2>Data Source Configuration</h2>
             <form onsubmit="saveHomeAssistant(event)">
+                <label>Data Source:</label>
+                <select id="data_source" name="data_source">
+                    %DATA_SOURCE_OPTIONS%
+                </select>
+
+                <label for="shelly_url">Shelly URL (eg http://192.168.1.50):</label>
+                <input type="text" id="shelly_url" name="shelly_url" value="%SHELLY_URL%">
+
+                <hr>
                 <label for="ha_url">Home Assistant URL:</label>
                 <input type="text" id="ha_url" name="ha_url" value="%HA_URL%">
                 <label for="ha_token">Long-Lived Access Token:</label>
@@ -92,8 +101,13 @@ String WebServerManager::generateIndexHtml() {
                 <input type="text" id="ha_entity_frequency" name="ha_entity_frequency" value="%HA_FREQUENCY_ID%">
                 <label for="ha_power_factor_id">Power Factor Entity ID:</label>
                 <input type="text" id="ha_entity_power_factor" name="ha_entity_power_factor" value="%HA_POWER_FACTOR_ID%">
-                <button type="submit">Save Home Assistant Settings</button>
+                <button type="submit">Save Data Source Settings</button>
             </form>
+
+            <!-- Restart button for immediate reboot -->
+            <div style="margin-top: 10px; text-align: center;">
+                <button type="button" onclick="restartEsp()" style="background:#dc3545;">Restart ESP</button>
+            </div>
         </div>
 
         <div id="Logs" class="tabcontent">
@@ -255,17 +269,41 @@ String WebServerManager::generateIndexHtml() {
 
         function saveHomeAssistant(event) {
             event.preventDefault();
-            const formData = new URLSearchParams(new FormData(event.target)).toString();
+            // Collect fields including data source and shelly url
+            const form = event.target;
+            const data = {
+                data_source: form.querySelector('#data_source').value,
+                shelly_url: form.querySelector('#shelly_url').value,
+                ha_url: form.querySelector('#ha_url').value,
+                ha_token: form.querySelector('#ha_token').value,
+                ha_entity_power: form.querySelector('#ha_entity_power').value,
+                ha_entity_voltage: form.querySelector('#ha_entity_voltage').value,
+                ha_entity_current: form.querySelector('#ha_entity_current').value,
+                ha_entity_energy: form.querySelector('#ha_entity_energy').value,
+                ha_entity_frequency: form.querySelector('#ha_entity_frequency').value,
+                ha_entity_power_factor: form.querySelector('#ha_entity_power_factor').value
+            };
+
+            const body = new URLSearchParams(data).toString();
+
             fetch('/saveha', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
+                body: body
             })
             .then(response => response.text())
             .then(data => {
                 alert(data);
             })
-            .catch(error => console.error('Error saving Home Assistant config:', error));
+            .catch(error => console.error('Error saving Data Source config:', error));
+        }
+
+        function restartEsp() {
+            if (!confirm('Restart ESP32 now?')) return;
+            fetch('/restart', { method: 'POST' })
+                .then(response => response.text())
+                .then(msg => alert(msg))
+                .catch(err => console.error('Error restarting:', err));
         }
         
         document.getElementById("defaultOpen").click(); // Open Dashboard by default
@@ -286,6 +324,16 @@ String WebServerManager::generateIndexHtml() {
     html.replace("%HA_FREQUENCY_ID%", String(pConfig->currentConfig.home_assistant_entity_frequency));
     html.replace("%HA_POWER_FACTOR_ID%", String(pConfig->currentConfig.home_assistant_entity_power_factor));
 
+    // New placeholders for data source and shelly url
+    html.replace("%SHELLY_URL%", String(pConfig->currentConfig.shelly_url));
+
+    // Build data source options and select current
+    String dataSource = String(pConfig->currentConfig.data_source);
+    String options = "";
+    options += (dataSource == "HomeAssistant") ? "<option value=\"HomeAssistant\" selected>Home Assistant</option>" : "<option value=\"HomeAssistant\">Home Assistant</option>";
+    options += (dataSource == "Shelly") ? "<option value=\"Shelly\" selected>Shelly 3EM</option>" : "<option value=\"Shelly\">Shelly 3EM</option>";
+    html.replace("%DATA_SOURCE_OPTIONS%", options);
+
     // Placeholders for current Wi-Fi configuration (for the dropdown and JS)
     String currentSsid = String(pConfig->currentConfig.ssid);
     html.replace("%CURRENT_SSID_OPTION_VALUE%", currentSsid);
@@ -295,10 +343,10 @@ String WebServerManager::generateIndexHtml() {
     return html;
 }
 
-void WebServerManager::begin(ConfigManager& config, WiFiManager& wifi, HomeAssistantClient& ha) {
+void WebServerManager::begin(ConfigManager& config, WiFiManager& wifi, DataManager* ha) {
 	pConfig = &config;
 	pWifi = &wifi;
-	pHa = &ha;
+	pClient = ha;
 	setupRoutes();
 	server.begin();
 	Logger::getInstance().log(LOG_TAG_SERVERWEB, "Server Web is running.");
@@ -325,7 +373,7 @@ void WebServerManager::handleRoot() {
 }
 
 void WebServerManager::handleData() {
-	server.send(200, "application/json", pHa->getDataJson());
+	server.send(200, "application/json", pClient->getDataJson());
 }
 
 void WebServerManager::handleWifiStatus() {
@@ -358,20 +406,47 @@ void WebServerManager::handleSaveWifi() {
 }
 
 void WebServerManager::handleSaveHomeAssistant() {
-	server.arg("ha_url").toCharArray(pConfig->currentConfig.home_assistant_url, sizeof(pConfig->currentConfig.home_assistant_url));
-	server.arg("ha_token").toCharArray(pConfig->currentConfig.home_assistant_token, sizeof(pConfig->currentConfig.home_assistant_token));
-	server.arg("ha_entity_power").toCharArray(pConfig->currentConfig.home_assistant_entity_power, sizeof(pConfig->currentConfig.home_assistant_entity_power));
-	server.arg("ha_entity_voltage").toCharArray(pConfig->currentConfig.home_assistant_entity_voltage, sizeof(pConfig->currentConfig.home_assistant_entity_voltage));
-	server.arg("ha_entity_current").toCharArray(pConfig->currentConfig.home_assistant_entity_current, sizeof(pConfig->currentConfig.home_assistant_entity_current));
-	server.arg("ha_entity_energy").toCharArray(pConfig->currentConfig.home_assistant_entity_energy, sizeof(pConfig->currentConfig.home_assistant_entity_energy));
-	server.arg("ha_entity_frequency").toCharArray(pConfig->currentConfig.home_assistant_entity_frequency, sizeof(pConfig->currentConfig.home_assistant_entity_frequency));
-	server.arg("ha_entity_power_factor").toCharArray(pConfig->currentConfig.home_assistant_entity_power_factor, sizeof(pConfig->currentConfig.home_assistant_entity_power_factor));
+    // Save data source and Shelly URL as well as Home Assistant fields
+    if (server.hasArg("data_source")) {
+        server.arg("data_source").toCharArray(pConfig->currentConfig.data_source, sizeof(pConfig->currentConfig.data_source));
+    }
+    if (server.hasArg("shelly_url")) {
+        server.arg("shelly_url").toCharArray(pConfig->currentConfig.shelly_url, sizeof(pConfig->currentConfig.shelly_url));
+    }
 
-	pConfig->save();
+    if (server.hasArg("ha_url")) {
+        server.arg("ha_url").toCharArray(pConfig->currentConfig.home_assistant_url, sizeof(pConfig->currentConfig.home_assistant_url));
+    }
+    if (server.hasArg("ha_token")) {
+        server.arg("ha_token").toCharArray(pConfig->currentConfig.home_assistant_token, sizeof(pConfig->currentConfig.home_assistant_token));
+    }
+    if (server.hasArg("ha_entity_power")) {
+        server.arg("ha_entity_power").toCharArray(pConfig->currentConfig.home_assistant_entity_power, sizeof(pConfig->currentConfig.home_assistant_entity_power));
+    }
+    if (server.hasArg("ha_entity_voltage")) {
+        server.arg("ha_entity_voltage").toCharArray(pConfig->currentConfig.home_assistant_entity_voltage, sizeof(pConfig->currentConfig.home_assistant_entity_voltage));
+    }
+    if (server.hasArg("ha_entity_current")) {
+        server.arg("ha_entity_current").toCharArray(pConfig->currentConfig.home_assistant_entity_current, sizeof(pConfig->currentConfig.home_assistant_entity_current));
+    }
+    if (server.hasArg("ha_entity_energy")) {
+        server.arg("ha_entity_energy").toCharArray(pConfig->currentConfig.home_assistant_entity_energy, sizeof(pConfig->currentConfig.home_assistant_entity_energy));
+    }
+    if (server.hasArg("ha_entity_frequency")) {
+        server.arg("ha_entity_frequency").toCharArray(pConfig->currentConfig.home_assistant_entity_frequency, sizeof(pConfig->currentConfig.home_assistant_entity_frequency));
+    }
+    if (server.hasArg("ha_entity_power_factor")) {
+        server.arg("ha_entity_power_factor").toCharArray(pConfig->currentConfig.home_assistant_entity_power_factor, sizeof(pConfig->currentConfig.home_assistant_entity_power_factor));
+    }
 
-	Logger::getInstance().log(LOG_TAG_SERVERWEB, "Home Assistant Configuration Saved.");
-	String response = "Home Assistant Configuration Saved!";
-	server.send(200, "text/html", response);
+    pConfig->save();
+
+    Logger::getInstance().log(LOG_TAG_SERVERWEB, "Data Source Configuration Saved.");
+    String response = "Data Source Configuration Saved!";
+    server.send(200, "text/html", response);
+    // Force a restart after saving data source config
+    delay(2000);
+    ESP.restart();
 }
 
 void WebServerManager::handleNotFound() {
@@ -384,4 +459,12 @@ void WebServerManager::handleLogHtml() {
         tagFilter = server.arg("tag");
     }
     server.send(200, "text/plain", Logger::getInstance().getLogsHtml(tagFilter));
+}
+
+// New restart handler
+void WebServerManager::handleRestart() {
+    Logger::getInstance().log(LOG_TAG_SERVERWEB, "Restart requested via web interface.");
+    server.send(200, "text/plain", "Restarting...");
+    delay(1000);
+    ESP.restart();
 }

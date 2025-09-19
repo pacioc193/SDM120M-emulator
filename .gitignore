@@ -2,3 +2,5 @@
 *.mbp
 *.filters
 *.vcxproj
+/src/SDM120_Emulator/.vs
+/src/SDM120_Emulator/__vm

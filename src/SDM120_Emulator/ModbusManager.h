@@ -21,12 +21,12 @@
 
 class ModbusManager {
 public:
-    void begin(HomeAssistantClient& haClient, uint8_t slaveId, int rxPin, int txPin, int deRePin = -1, int iBoud = 2400);
+    void begin(DataManager& client, uint8_t slaveId, int rxPin, int txPin, int deRePin = -1, int iBoud = 2400);
     void modbus_loop();
 
 private:
     ModbusRTU mb;
-    HomeAssistantClient* pHaClient;
+    DataManager* pxClient;
 
     // Union to convert float to two uint16_t for Modbus registers
     typedef union {

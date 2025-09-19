@@ -11,6 +11,7 @@ enum LogTag {
     LOG_TAG_SERVERWEB,
     LOG_TAG_WIFI,
     LOG_TAG_HA,
+    LOG_TAG_SHELLY, // Added Shelly tag
     LOG_TAG_CONFIG,
     LOG_TAG_MODBUS
 };

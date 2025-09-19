@@ -3,13 +3,17 @@
 #include "ConfigManager.h"
 #include "WiFiManager.h"
 #include "HomeAssistantClient.h"
+#include "ShellyClient.h"
 #include "WebServerManager.h"
 #include "Logger.h"
 #include "ModbusManager.h"
+#include "DataManager.h"
 
 ConfigManager configManager;
 WiFiManager wifiManager;
-HomeAssistantClient haClient;
+HomeAssistantClient haClientObj;
+ShellyClient shellyClientObj;
+DataManager* pxDataClient = nullptr;
 WebServerManager webServer;
 Logger& logger = Logger::getInstance(); 
 ModbusManager modbusManager;
@@ -34,9 +38,18 @@ void setup() {
     bool forceAP = (digitalRead(FORCE_AP_BUTTON_PIN) == LOW);
 
     wifiManager.begin(configManager, forceAP);
-    webServer.begin(configManager, wifiManager, haClient);
 
-    modbusManager.begin(haClient, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
+    // Choose data source based on stored config
+    String ds = String(configManager.currentConfig.data_source);
+    if (ds == "Shelly") {
+        webServer.begin(configManager, wifiManager, &shellyClientObj);
+        modbusManager.begin(shellyClientObj, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
+		pxDataClient = &shellyClientObj;
+    } else {
+        webServer.begin(configManager, wifiManager, &haClientObj);
+        modbusManager.begin(haClientObj, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
+		pxDataClient = &haClientObj;
+    }
 
     // --- Inizializzazione ArduinoOTA ---
     ArduinoOTA.setHostname("SDM120_ESP32");
@@ -64,8 +77,8 @@ void setup() {
 void loop() {
     webServer.handleClient();
 
-    if (wifiManager.isConnected() && (millis() - lastHAFetchTime > HAFetchInterval)) {
-        haClient.fetchAllData(configManager);
+    if (wifiManager.isConnected() && pxDataClient && (millis() - lastHAFetchTime > HAFetchInterval)) {
+        pxDataClient->fetchAllData(configManager);
         lastHAFetchTime = millis();
     }
 

@@ -3,8 +3,8 @@
 #include "Logger.h" // For logging
 #include "String"
 
-void ModbusManager::begin(HomeAssistantClient& haClient, uint8_t slaveId, int rxPin, int txPin, int deRePin, int iBoud) {
-	pHaClient = &haClient;
+void ModbusManager::begin(DataManager& client, uint8_t slaveId, int rxPin, int txPin, int deRePin, int iBoud) {
+	pxClient = &client;
 
 	Serial2.begin(iBoud, SERIAL_8N1, rxPin, txPin); // Typical Modbus RTU settings
 	mb.setBaudrate(iBoud); // Set baud rate separately for ModbusRTU object
@@ -32,7 +32,7 @@ void ModbusManager::begin(HomeAssistantClient& haClient, uint8_t slaveId, int rx
         }
         else
         {
-            if (!pHaClient->isOnline()) {
+            if (!pxClient->isOnline()) {
                 Logger::getInstance().log(LOG_TAG_MODBUS, "Home Assistant client is offline. Cannot process Modbus request.");
                 return Modbus::EX_SLAVE_FAILURE;
             }
@@ -55,7 +55,7 @@ void ModbusManager::modbus_loop() {
 
 void ModbusManager::updateModbusRegisters() {
 	// Get the latest data from Home Assistant client
-	HAData data = pHaClient->getCurrentData();
+	MeterData data = pxClient->getCurrentData();
 
 	// Convert float values to two uint16_t and write to Modbus registers
 	// Standard Modbus float representation is usually Big-Endian (MSW at lower address)

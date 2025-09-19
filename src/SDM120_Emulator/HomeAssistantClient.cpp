@@ -5,7 +5,7 @@
 #include "WiFi.h"
 
 void HomeAssistantClient::fetchAllData(ConfigManager& config) {
-    haOnline = false;
+    bOnline = false;
 
     if (WiFi.status() != WL_CONNECTED) {
         Logger::getInstance().log(LOG_TAG_HA, "WiFi not connected, cannot fetch data from Home Assistant.");
@@ -66,7 +66,7 @@ void HomeAssistantClient::fetchAllData(ConfigManager& config) {
         }
     }
 
-    haOnline = true;
+    bOnline = true;
 }
 
 float HomeAssistantClient::getHAEntityState(const String& base_url, const String& token, const String& entity_id) {

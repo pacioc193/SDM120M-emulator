@@ -6,18 +6,18 @@
 #include <WebServer.h>
 #include "ConfigManager.h"
 #include "WiFiManager.h"
-#include "HomeAssistantClient.h"
+#include "DataManager.h"
 
 class WebServerManager {
 public:
-    void begin(ConfigManager& config, WiFiManager& wifi, HomeAssistantClient& ha);
+    void begin(ConfigManager& config, WiFiManager& wifi, DataManager* ha);
     void handleClient();
 
 private:
     WebServer server;
     ConfigManager* pConfig = nullptr;
     WiFiManager* pWifi = nullptr;
-    HomeAssistantClient* pHa = nullptr;
+    DataManager* pClient = nullptr;
     String lastScanJson = "[]";
 
     void setupRoutes();
@@ -33,6 +33,7 @@ private:
     void handleLogHtml();
     void handleLogTxt();
     void handleNotFound();
+    void handleRestart();
 };
 
 #endif

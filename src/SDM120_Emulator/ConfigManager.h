@@ -15,6 +15,8 @@ struct Config {
     char home_assistant_entity_energy[64];
     char home_assistant_entity_frequency[64];
     char home_assistant_entity_power_factor[64];
+    char data_source[16]; // e.g. "HomeAssistant" or "Shelly"
+    char shelly_url[64];
     bool configured;
 };
 
