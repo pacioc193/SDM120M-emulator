@@ -34,6 +34,7 @@ private:
     void handleLogTxt();
     void handleNotFound();
     void handleRestart();
+    void handleDiag();
 };
 
 #endif

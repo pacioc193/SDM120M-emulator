@@ -6,8 +6,11 @@
 
 void HomeAssistantClient::fetchAllData(ConfigManager& config) {
     bOnline = false;
+    lastError = "";
+    lastHttpCode = 0;
 
     if (WiFi.status() != WL_CONNECTED) {
+        lastError = "WiFi not connected";
         Logger::getInstance().log(LOG_TAG_HA, "WiFi not connected, cannot fetch data from Home Assistant.");
         return;
     }
@@ -16,6 +19,7 @@ void HomeAssistantClient::fetchAllData(ConfigManager& config) {
     const String& token = config.currentConfig.home_assistant_token;
 
     if (url.isEmpty() || token.isEmpty()) {
+        lastError = "URL or token missing";
         Logger::getInstance().log(LOG_TAG_HA, "URL or Token for Home Assistant not found...");
         return;
     }
@@ -61,12 +65,14 @@ void HomeAssistantClient::fetchAllData(ConfigManager& config) {
 
     for (size_t i = 0; i < sizeof(validations)/sizeof(validations[0]); ++i) {
         if (!validations[i].valid) {
+            lastError = validations[i].msg;
             Logger::getInstance().log(LOG_TAG_HA, validations[i].msg);
             return;
         }
     }
 
     bOnline = true;
+    lastSuccessTs = millis();
 }
 
 float HomeAssistantClient::getHAEntityState(const String& base_url, const String& token, const String& entity_id) {
@@ -81,6 +87,7 @@ float HomeAssistantClient::getHAEntityState(const String& base_url, const String
     http.addHeader("Content-Type", "application/json");
 
     int httpResponseCode = http.GET();
+    lastHttpCode = httpResponseCode;
 
     if (httpResponseCode == HTTP_CODE_OK) {
         String payload = http.getString();
@@ -88,6 +95,7 @@ float HomeAssistantClient::getHAEntityState(const String& base_url, const String
         DeserializationError error = deserializeJson(doc, payload);
 
         if (error) {
+            lastError = "JSON parse error for " + entity_id + ": " + String(error.f_str());
             Logger::getInstance().log(LOG_TAG_HA, "Failed parsing JSON of " + entity_id + ": " + error.f_str());
             http.end();
             return 0.0;
@@ -99,10 +107,12 @@ float HomeAssistantClient::getHAEntityState(const String& base_url, const String
             return String(state_str).toFloat();
         }
         else {
+            lastError = "State not found for " + entity_id;
             Logger::getInstance().log(LOG_TAG_HA, "State not found in JSON for " + entity_id);
         }
     }
     else {
+        lastError = "HTTP Error " + String(httpResponseCode) + " for " + entity_id;
         Logger::getInstance().log(LOG_TAG_HA, "HTTP Error " + String(httpResponseCode) + " for " + entity_id);
     }
 

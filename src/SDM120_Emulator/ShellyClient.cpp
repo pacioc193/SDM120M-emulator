@@ -6,8 +6,11 @@
 
 void ShellyClient::fetchAllData(ConfigManager& config) {
     bOnline = false;
+    lastError = "";
+    lastHttpCode = 0;
 
     if (WiFi.status() != WL_CONNECTED) {
+        lastError = "WiFi not connected";
         Logger::getInstance().log(LOG_TAG_SHELLY, "WiFi not connected, cannot fetch data from Shelly.");
         return;
     }
@@ -19,6 +22,7 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
     }
 
     if (url.isEmpty()) {
+        lastError = "Shelly URL not configured";
         Logger::getInstance().log(LOG_TAG_SHELLY, "Shelly URL not found...");
         return;
     }
@@ -30,7 +34,9 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
     http.begin(api);
     http.setTimeout(2000);
     int code = http.GET();
+    lastHttpCode = code;
     if (code != HTTP_CODE_OK) {
+        lastError = "HTTP Error " + String(code);
         Logger::getInstance().log(LOG_TAG_SHELLY, "HTTP Error " + String(code) + " when contacting Shelly");
         Logger::getInstance().log(LOG_TAG_SHELLY, api);
         http.end();
@@ -43,6 +49,7 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
     StaticJsonDocument<2048> doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (err) {
+        lastError = "JSON parse error: " + String(err.f_str());
         Logger::getInstance().log(LOG_TAG_SHELLY, "Failed parsing Shelly JSON: " + String(err.f_str()));
         return;
     }
@@ -51,12 +58,14 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
     // We'll read meter 0 by default.
 
     if (!doc.containsKey("emeters") || !doc["emeters"].is<JsonArray>()) {
+        lastError = "emeters array missing";
         Logger::getInstance().log(LOG_TAG_SHELLY, "Shelly JSON does not contain emeters array");
         return;
     }
 
     JsonArray emeters = doc["emeters"].as<JsonArray>();
     if (emeters.size() == 0) {
+        lastError = "emeters array empty";
         Logger::getInstance().log(LOG_TAG_SHELLY, "Shelly emeters array is empty");
         return;
     }
@@ -81,21 +90,34 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
 
     // Ensure sensible ranges
     if (currentData.voltage_v <= 0 || currentData.current_a < 0 || currentData.power_w < 0) {
+        lastError = "invalid measurements";
         Logger::getInstance().log(LOG_TAG_SHELLY, "Shelly returned invalid measurements");
         return;
     }
 
     bOnline = true;
+    lastSuccessTs = millis();
 }
 
 String ShellyClient::getDataJson() {
-    String json = "{";
-    json += "\"Power (Kw)\":" + String(currentData.power_w / 1000.0f, 3);
-    json += ",\"Energy (Kwh)\":" + String(currentData.energy_kwh, 3);
-    json += ",\"Voltage (V)\":" + String(currentData.voltage_v, 1);
-    json += ",\"Current (A)\":" + String(currentData.current_a, 2);
-    json += ",\"Frequency (Hz)\":" + String(currentData.frequency_hz, 1);
-    json += ",\"Power Factor\":" + String(currentData.power_factor, 2);
-    json += "}";
-    return json;
+    // Format values according to requirements:
+    // power_kw 3 decimals, energy_kwh 0 decimals, voltage 2, current 2, frequency 2, power factor 2
+    String power_kw = String(currentData.power_w / 1000.0f, 3);
+    String energy_kwh = String(currentData.energy_kwh, 0);
+    String voltage_v = String(currentData.voltage_v, 2);
+    String current_a = String(currentData.current_a, 2);
+    String frequency_hz = String(currentData.frequency_hz, 2);
+    String power_factor = String(currentData.power_factor, 2);
+
+    StaticJsonDocument<256> doc;
+    doc["Power (Kw)"] = power_kw;
+    doc["Energy (Kwh)"] = energy_kwh;
+    doc["Voltage (V)"] = voltage_v;
+    doc["Current (A)"] = current_a;
+    doc["Frequency (Hz)"] = frequency_hz;
+    doc["Power Factor"] = power_factor;
+
+    String out;
+    serializeJson(doc, out);
+    return out;
 }

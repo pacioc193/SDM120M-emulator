@@ -13,6 +13,16 @@ public:
     String getDataJson();
     MeterData getCurrentData() const { return currentData; }
     bool isOnline() const { return bOnline; }
+
+    // Telemetry for diagnostics
+    int lastHttpCode = 0;
+    String lastError; // last error message
+    unsigned long lastSuccessTs = 0; // epoch millis when last successful fetch occurred
+
+    // Implement diagnostic interface
+    int getLastHttpCode() const override { return lastHttpCode; }
+    String getLastError() const override { return lastError; }
+    unsigned long getLastSuccessTs() const override { return lastSuccessTs; }
 };
 
 #endif

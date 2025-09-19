@@ -19,6 +19,9 @@
 #define SDM120_REG_FREQUENCY        0x0046 // 2 registers for float
 #define SDM120_REG_TOTAL_ACTIVE_ENERGY 0x0048 // 2 registers for float (kWh)
 
+// Modbus will consider the data source offline only after this timeout
+#define MODBUS_OFFLINE_TIMEOUT_MS 30000UL // 30 seconds
+
 class ModbusManager {
 public:
     void begin(DataManager& client, uint8_t slaveId, int rxPin, int txPin, int deRePin = -1, int iBoud = 2400);
@@ -27,6 +30,9 @@ public:
 private:
     ModbusRTU mb;
     DataManager* pxClient;
+
+    // timestamp of last successful data availability
+    unsigned long lastGoodMillis = 0;
 
     // Union to convert float to two uint16_t for Modbus registers
     typedef union {

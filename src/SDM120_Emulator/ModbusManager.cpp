@@ -1,7 +1,7 @@
 // ModbusManager.cpp
 #include "ModbusManager.h"
-#include "Logger.h" // For logging
-#include "String"
+#include "Logger.h"
+#include <Arduino.h>
 
 void ModbusManager::begin(DataManager& client, uint8_t slaveId, int rxPin, int txPin, int deRePin, int iBoud) {
 	pxClient = &client;
@@ -10,6 +10,9 @@ void ModbusManager::begin(DataManager& client, uint8_t slaveId, int rxPin, int t
 	mb.setBaudrate(iBoud); // Set baud rate separately for ModbusRTU object
 	mb.slave(slaveId);
 	mb.begin(&Serial2, deRePin);
+
+	// Initialize lastGoodMillis to now so transient startup doesn't show offline immediately
+	lastGoodMillis = millis();
 
 	// Add holding registers to the Modbus map. Each float takes 2 registers.
 	mb.addIreg(SDM120_REG_VOLTAGE, 0, 2);
@@ -32,8 +35,11 @@ void ModbusManager::begin(DataManager& client, uint8_t slaveId, int rxPin, int t
         }
         else
         {
-            if (!pxClient->isOnline()) {
-                Logger::getInstance().log(LOG_TAG_MODBUS, "Home Assistant client is offline. Cannot process Modbus request.");
+            // Consider client online if it reported data recently within timeout
+            unsigned long now = millis();
+            bool recentGood = (now - lastGoodMillis <= MODBUS_OFFLINE_TIMEOUT_MS);
+            if (!recentGood) {
+                Logger::getInstance().log(LOG_TAG_MODBUS, "Client considered offline (no recent data). Cannot process Modbus request.");
                 return Modbus::EX_SLAVE_FAILURE;
             }
             Logger::getInstance().log(LOG_TAG_MODBUS, "Received Modbus request: Function Code: " + String(fc) + ", Address: " + String(data.reg.address) + ", Count: " + String(data.regCount));
@@ -56,6 +62,11 @@ void ModbusManager::modbus_loop() {
 void ModbusManager::updateModbusRegisters() {
 	// Get the latest data from Home Assistant client
 	MeterData data = pxClient->getCurrentData();
+
+	// If the client reports online, update lastGoodMillis
+	if (pxClient->isOnline()) {
+		lastGoodMillis = millis();
+	}
 
 	// Convert float values to two uint16_t and write to Modbus registers
 	// Standard Modbus float representation is usually Big-Endian (MSW at lower address)

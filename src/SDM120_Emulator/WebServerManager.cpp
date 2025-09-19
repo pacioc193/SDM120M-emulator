@@ -1,5 +1,8 @@
 #include "WebServerManager.h"
 #include "Logger.h"
+#include "ShellyClient.h"
+#include "ModbusManager.h"
+#include <ArduinoJson.h>
 
 String WebServerManager::generateIndexHtml() {
     String html = R"rawliteral(
@@ -56,6 +59,19 @@ String WebServerManager::generateIndexHtml() {
             <h2>Live Data</h2>
             <div class="data-grid" id="dashboard-data">
                 </div>
+            <h2>Diagnostics</h2>
+            <div id="diag-info" class="data-item" style="margin-top:10px; text-align:left; padding:12px;">
+                <div><strong>Last valid response:</strong> <span id="diag-last-success">-</span></div>
+                <div><strong>Age:</strong> <span id="diag-age">-</span></div>
+                <div><strong>Time until Modbus offline:</strong> <span id="diag-remaining">-</span></div>
+                <div><strong>Last HTTP code:</strong> <span id="diag-http">-</span></div>
+                <div><strong>Last error:</strong> <span id="diag-error">-</span></div>
+            </div>
+
+            <!-- New paragraph for connection summary -->
+            <p id="connection-paragraph" style="margin-top:10px; background:#f8f9fb; padding:10px; border-radius:6px;">
+                Connection: -
+            </p>
         </div>
 
         <div id="Config" class="tabcontent">
@@ -123,6 +139,7 @@ String WebServerManager::generateIndexHtml() {
                         <option value="HomeAssistant">HomeAssistant</option>
                         <option value="Config">Config</option>
                         <option value="Modbus">Modbus</option>
++                       <option value="Shelly">Shelly</option>
                     </select>
                 </div>
                 <a href="/log.txt" download="esp32_log.txt"><button type="button">Download Log (.txt)</button></a>
@@ -305,10 +322,50 @@ String WebServerManager::generateIndexHtml() {
                 .then(msg => alert(msg))
                 .catch(err => console.error('Error restarting:', err));
         }
+
+        function updateDiag() {
+            fetch('/diag')
+                .then(resp => resp.json())
+                .then(d => {
+                    // Update diagnostics UI
+                    const lastSuccessEl = document.getElementById('diag-last-success');
+                    const ageEl = document.getElementById('diag-age');
+                    const remainingEl = document.getElementById('diag-remaining');
+                    const httpEl = document.getElementById('diag-http');
+                    const errEl = document.getElementById('diag-error');
+
+                    // Use server-provided human-friendly age if present
+                    if (d.last_success_age !== undefined && d.last_success_age !== "-") {
+                        ageEl.innerText = d.last_success_age;
+                        remainingEl.innerText = d.time_until_offline !== undefined ? d.time_until_offline : '-';
+                        // Show same human-friendly value for last success
+                        lastSuccessEl.innerText = d.last_success_age;
+                    } else {
+                        lastSuccessEl.innerText = '-';
+                        ageEl.innerText = '-';
+                        remainingEl.innerText = '-';
+                    }
+
+                    httpEl.innerText = d.last_http_code !== undefined ? d.last_http_code : '-';
+                    errEl.innerText = d.last_error ? d.last_error : '-';
+
+                    // Update connection paragraph (new) - render HTML if provided
+                    const connPara = document.getElementById('connection-paragraph');
+                    if (d.connection_summary !== undefined) {
+                        connPara.innerHTML = d.connection_summary; // render HTML summary
+                    } else {
+                        // Build a simple summary if connection_summary not provided
+                        const src = d.data_source ? d.data_source : 'Unknown';
+                        connPara.innerText = `Source: ${src} | Online: ${d.online ? 'Yes' : 'No'} | Last HTTP: ${d.last_http_code !== undefined ? d.last_http_code : '-'} | Error: ${d.last_error ? d.last_error : '-'} | Age: ${d.last_success_age !== undefined && d.last_success_age !== '-' ? d.last_success_age : '-'}`;
+                    }
+                })
+                .catch(e => console.error('Error fetching diag:', e));
+        }
         
         document.getElementById("defaultOpen").click(); // Open Dashboard by default
         setInterval(updateData, 500); // Update dashboard data every 0.5 seconds
         setInterval(updateWifiStatus, 5000); // Update Wi-Fi status every 5 seconds
+        setInterval(updateDiag, 2000); // Poll diag periodically
         updateWifiStatus(); // Initial call for Wi-Fi status
     </script>
 </body>
@@ -363,8 +420,10 @@ void WebServerManager::setupRoutes() {
 	server.on("/scan", HTTP_GET, [this]() { this->handleScan(); });
 	server.on("/savewifi", HTTP_POST, [this]() { this->handleSaveWifi(); });
 	server.on("/saveha", HTTP_POST, [this]() { this->handleSaveHomeAssistant(); });
+    server.on("/restart", HTTP_POST, [this]() { this->handleRestart(); }); // New restart route
 	server.on("/log_html", HTTP_GET, [this]() { this->handleLogHtml(); });
 	server.on("/log.txt", HTTP_GET, [this]() { this->handleLogTxt(); });
+    server.on("/diag", HTTP_GET, [this]() { this->handleDiag(); }); // Diagnostics route
 	server.onNotFound([this]() { this->handleNotFound(); });
 }
 
@@ -449,8 +508,15 @@ void WebServerManager::handleSaveHomeAssistant() {
     ESP.restart();
 }
 
+void WebServerManager::handleRestart() {
+    Logger::getInstance().log(LOG_TAG_SERVERWEB, "Restart requested via web interface.");
+    server.send(200, "text/plain", "Restarting...");
+    delay(1000);
+    ESP.restart();
+}
+
 void WebServerManager::handleNotFound() {
-	server.send(404, "text/plain", "404: Not Found");
+    server.send(404, "text/plain", "404: Not Found");
 }
 
 void WebServerManager::handleLogHtml() {
@@ -461,10 +527,95 @@ void WebServerManager::handleLogHtml() {
     server.send(200, "text/plain", Logger::getInstance().getLogsHtml(tagFilter));
 }
 
-// New restart handler
-void WebServerManager::handleRestart() {
-    Logger::getInstance().log(LOG_TAG_SERVERWEB, "Restart requested via web interface.");
-    server.send(200, "text/plain", "Restarting...");
-    delay(1000);
-    ESP.restart();
+void WebServerManager::handleDiag() {
+    // Provide diagnostics JSON for the current data source via DataManager interface
+    if (!pClient) {
+        StaticJsonDocument<128> doc;
+        doc["online"] = false;
+        doc["note"] = "No data client attached.";
+        String out;
+        serializeJson(doc, out);
+        server.send(200, "application/json", out);
+        return;
+    }
+
+    // Use a smaller document to reduce RAM usage; keep only essential fields + HTML summary
+    StaticJsonDocument<384> doc;
+    doc["data_source"] = String(pConfig->currentConfig.data_source);
+    doc["online"] = pClient->isOnline();
+    doc["last_http_code"] = pClient->getLastHttpCode();
+
+    // Keep last_error short (limit length)
+    String lastErr = pClient->getLastError();
+    if (lastErr.length() > 120) lastErr = lastErr.substring(0, 117) + "...";
+    doc["last_error"] = lastErr;
+
+    unsigned long ageMs = pClient->getLastSuccessAgeMs();
+    String ageStr;
+    if (ageMs == (unsigned long)(-1) || pClient->getLastSuccessTs() == 0) {
+        ageStr = "-";
+    } else {
+        float s = ageMs / 1000.0f;
+        ageStr = String(s, 1) + " s";
+    }
+    doc["last_success_age"] = ageStr; // human-friendly string only (save memory by not including raw ms)
+
+    // Time until Modbus offline string
+    long remainingMs = 0;
+    if (!(ageMs == (unsigned long)(-1) || pClient->getLastSuccessTs() == 0)) {
+        remainingMs = (long)MODBUS_OFFLINE_TIMEOUT_MS - (long)ageMs;
+        if (remainingMs < 0) remainingMs = 0;
+    }
+    float remS = remainingMs / 1000.0f;
+    doc["time_until_offline"] = String(remS, 1) + " s";
+
+    // Mask shelly url very conservatively: show only hostname or IP, no port
+    String shelly = String(pConfig->currentConfig.shelly_url);
+    String masked = "(not set)";
+    if (!shelly.isEmpty()) {
+        int p = shelly.indexOf("://");
+        int start = (p >= 0) ? p + 3 : 0;
+        int slash = shelly.indexOf('/', start);
+        String host = (slash >= 0) ? shelly.substring(start, slash) : shelly.substring(start);
+        // remove credentials before '@'
+        int at = host.indexOf('@');
+        if (at >= 0) host = host.substring(at + 1);
+        // remove port if present
+        int colon = host.indexOf(':');
+        if (colon >= 0) host = host.substring(0, colon);
+        // final conservative mask: if empty after processing, mark as (hidden)
+        if (host.length() > 0) masked = host;
+        else masked = "(hidden)";
+    }
+    doc["shelly_url_masked"] = masked;
+
+    // Build connection_summary as HTML with a link to the shelly host (no credentials, no path)
+    String conn = "";
+    conn += "<b>Source:</b> " + String(pConfig->currentConfig.data_source);
+    conn += " &nbsp; <b>Shelly:</b> ";
+    if (masked != "(not set)" && masked != "(hidden)") {
+        // construct a safe http link without credentials
+        String href = "http://" + masked;
+        conn += "<a href=\"" + href + "\" target=\"_blank\">" + masked + "</a>";
+    } else {
+        conn += masked;
+    }
+    conn += " &nbsp; <b>Online:</b> ";
+    conn += (pClient->isOnline() ? "<span style=\"color:green\">Yes</span>" : "<span style=\"color:red\">No</span>");
+    conn += " &nbsp; <b>Modbus:</b> ";
+    conn += (remainingMs > 0 ? "<span style=\"color:green\">OK</span>" : "<span style=\"color:orange\">Offline</span>");
+    conn += " &nbsp; <b>Age:</b> " + ageStr;
+    conn += " &nbsp; <b>Last HTTP:</b> " + String(pClient->getLastHttpCode());
+    conn += " &nbsp; <b>Error:</b> " + (lastErr.length() ? lastErr : String("-"));
+    doc["connection_summary"] = conn; // HTML string
+
+    // Expose minimal current measurements as numbers (smaller than strings)
+    MeterData md = pClient->getCurrentData();
+    doc["power_w"] = md.power_w;
+    doc["voltage_v"] = md.voltage_v;
+    doc["current_a"] = md.current_a;
+
+    String out;
+    serializeJson(doc, out);
+    server.send(200, "application/json", out);
 }

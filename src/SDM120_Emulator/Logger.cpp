@@ -53,6 +53,7 @@ String Logger::tagToString(LogTag tag) {
     case LOG_TAG_SERVERWEB: return "WebServer";
     case LOG_TAG_WIFI:      return "WiFi";
     case LOG_TAG_HA:        return "HomeAssistant";
+    case LOG_TAG_SHELLY:    return "Shelly"; // Added Shelly mapping
     case LOG_TAG_CONFIG:    return "Config";
     case LOG_TAG_MODBUS:    return "Modbus";
     default:                return "Other";
@@ -62,7 +63,7 @@ String Logger::tagToString(LogTag tag) {
 String Logger::getLogsHtml(const String& filterTag) {
     String html = "";
     for (int i = logEntries.size() - 1; i >= 0; i--) {
-        // Applica il filtro: se il filtro è "All" o se il tag corrisponde, mostra il log
+        // Applica il filtro: se il filtro Ã¨ "All" o se il tag corrisponde, mostra il log
         if (filterTag == "All" || logEntries[i].tag == filterTag) {
             html += "<tr>";
             html += "<td>" + logEntries[i].timestamp + "s</td>";
