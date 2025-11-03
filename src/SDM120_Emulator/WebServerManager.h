@@ -32,6 +32,7 @@ private:
     void handleSaveHomeAssistant();
     void handleLogHtml();
     void handleLogTxt();
+    void handleSetDebug();
     void handleNotFound();
     void handleRestart();
     void handleDiag();

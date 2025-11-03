@@ -42,6 +42,10 @@ String WebServerManager::generateIndexHtml() {
         #log_table th, #log_table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         #log_table th { background-color: #f2f2f2; }
         .log-controls { display: flex; justify-content: space-between; align-items: center; }
+        /* Debug badge styles */
+        .debug-badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 0.85em; font-weight: 600; margin-left: 8px; }
+        .debug-badge.on { background-color: #e9f7ef; color: #0f7a2e; }
+        .debug-badge.off { background-color: #fff5f5; color: #a10f1a; }
     </style>
 </head>
 <body>
@@ -139,10 +143,15 @@ String WebServerManager::generateIndexHtml() {
                         <option value="HomeAssistant">HomeAssistant</option>
                         <option value="Config">Config</option>
                         <option value="Modbus">Modbus</option>
-+                       <option value="Shelly">Shelly</option>
+                        <option value="Shelly">Shelly</option>
                     </select>
                 </div>
-                <a href="/log.txt" download="esp32_log.txt"><button type="button">Download Log (.txt)</button></a>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <label for="debug_switch" style="margin:0;">Debug:</label>
+                    <input type="checkbox" id="debug_switch" %DEBUG_CHECKED% onchange="toggleDebug(this.checked)">
+                    <span id="debug_status" class="debug-badge off">Debug OFF</span>
+                    <a href="/log.txt" download="esp32_log.txt"><button type="button">Download Log (.txt)</button></a>
+                </div>
             </div>
             <div style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
                 <table id="log_table">
@@ -171,6 +180,7 @@ String WebServerManager::generateIndexHtml() {
             evt.currentTarget.className += " active";
             if(tabName === 'Logs') {
                 updateLogs();
+                    updateDebugBadge();
                 if (!logInterval) {
                     logInterval = setInterval(updateLogs, 1000);
                 }
@@ -220,6 +230,33 @@ String WebServerManager::generateIndexHtml() {
             fetch('/log_html?tag=' + filter).then(r => r.text()).then(html => {
                 document.getElementById('log_body').innerHTML = html;
             }).catch(e => console.error('Error logs:', e));
+        }
+
+        function toggleDebug(enabled) {
+            // Send new debug state to the ESP
+            fetch('/setdebug?value=' + (enabled ? '1' : '0'))
+                .then(r => r.text())
+                .then(resp => {
+                    console.log('Debug set to', resp);
+                    // Update badge immediately to reflect new state
+                    updateDebugBadge(enabled);
+                })
+                .catch(e => console.error('Error setting debug:', e));
+        }
+
+        function updateDebugBadge(enabled) {
+            const badge = document.getElementById('debug_status');
+            const chk = document.getElementById('debug_switch');
+            // If enabled arg not provided, read from checkbox
+            const isEnabled = (typeof enabled === 'boolean') ? enabled : chk.checked;
+            if (!badge) return;
+            if (isEnabled) {
+                badge.classList.remove('off'); badge.classList.add('on');
+                badge.innerText = 'Debug ON';
+            } else {
+                badge.classList.remove('on'); badge.classList.add('off');
+                badge.innerText = 'Debug OFF';
+            }
         }
 
         function requestWifiScan() {
@@ -397,6 +434,8 @@ String WebServerManager::generateIndexHtml() {
     html.replace("%CURRENT_SSID_DISPLAY_TEXT%", currentSsid.isEmpty() ? "-- No Network Set --" : currentSsid);
     html.replace("%CURRENT_SSID_FOR_JS%", currentSsid); // For JavaScript to check
     html.replace("%CURRENT_PASSWORD%", ""); // Password is not displayed for security reasons.
+    // Set initial state of debug checkbox based on Logger
+    html.replace("%DEBUG_CHECKED%", Logger::getInstance().isDebug() ? "checked" : "");
     return html;
 }
 
@@ -423,6 +462,7 @@ void WebServerManager::setupRoutes() {
     server.on("/restart", HTTP_POST, [this]() { this->handleRestart(); }); // New restart route
 	server.on("/log_html", HTTP_GET, [this]() { this->handleLogHtml(); });
 	server.on("/log.txt", HTTP_GET, [this]() { this->handleLogTxt(); });
+    server.on("/setdebug", HTTP_GET, [this]() { this->handleSetDebug(); });
     server.on("/diag", HTTP_GET, [this]() { this->handleDiag(); }); // Diagnostics route
 	server.onNotFound([this]() { this->handleNotFound(); });
 }
@@ -525,6 +565,17 @@ void WebServerManager::handleLogHtml() {
         tagFilter = server.arg("tag");
     }
     server.send(200, "text/plain", Logger::getInstance().getLogsHtml(tagFilter));
+}
+
+void WebServerManager::handleSetDebug() {
+    bool enabled = false;
+    if (server.hasArg("value")) {
+        String v = server.arg("value");
+        if (v == "1" || v.equalsIgnoreCase("true")) enabled = true;
+    }
+    Logger::getInstance().setDebug(enabled);
+    String resp = enabled ? "1" : "0";
+    server.send(200, "text/plain", resp);
 }
 
 void WebServerManager::handleDiag() {

@@ -29,6 +29,8 @@ public:
     String getLogsHtml();
     String getLogsTxt();
     String getLogsHtml(const String& filterTag);
+    void setDebug(bool debug) { is_debug = debug; }
+    bool isDebug() const { return is_debug; }
 
 private:
     Logger();
@@ -37,6 +39,7 @@ private:
 
     std::vector<LogEntry> logEntries;
     String tagToString(LogTag tag);
+    bool is_debug = false;
 };
 
 #endif

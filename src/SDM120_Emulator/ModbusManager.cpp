@@ -42,7 +42,9 @@ void ModbusManager::begin(DataManager& client, uint8_t slaveId, int rxPin, int t
                 Logger::getInstance().log(LOG_TAG_MODBUS, "Client considered offline (no recent data). Cannot process Modbus request.");
                 return Modbus::EX_SLAVE_FAILURE;
             }
-            Logger::getInstance().log(LOG_TAG_MODBUS, "Received Modbus request: Function Code: " + String(fc) + ", Address: " + String(data.reg.address) + ", Count: " + String(data.regCount));
+			// If the log level includes debug, log the request details
+			if (Logger::getInstance().isDebug())
+            	Logger::getInstance().log(LOG_TAG_MODBUS, "Received Modbus request: Function Code: " + String(fc) + ", Address: " + String(data.reg.address) + ", Count: " + String(data.regCount));
         }
         return Modbus::EX_SUCCESS;
     });
