@@ -104,6 +104,13 @@ String WebServerManager::generateIndexHtml() {
                 <label for="shelly_url">Shelly URL (eg http://192.168.1.50):</label>
                 <input type="text" id="shelly_url" name="shelly_url" value="%SHELLY_URL%">
 
+                <label for="shelly_channel">Shelly Channel (Phase):</label>
+                <select id="shelly_channel" name="shelly_channel">
+                    <option value="0" %SHELLY_CH0_SEL%>Channel 0 (Phase A)</option>
+                    <option value="1" %SHELLY_CH1_SEL%>Channel 1 (Phase B)</option>
+                    <option value="2" %SHELLY_CH2_SEL%>Channel 2 (Phase C)</option>
+                </select>
+
                 <hr>
                 <label for="ha_url">Home Assistant URL:</label>
                 <input type="text" id="ha_url" name="ha_url" value="%HA_URL%">
@@ -323,11 +330,12 @@ String WebServerManager::generateIndexHtml() {
 
         function saveHomeAssistant(event) {
             event.preventDefault();
-            // Collect fields including data source and shelly url
+            // Collect fields including data source, shelly url and channel
             const form = event.target;
             const data = {
                 data_source: form.querySelector('#data_source').value,
                 shelly_url: form.querySelector('#shelly_url').value,
+                shelly_channel: form.querySelector('#shelly_channel').value,
                 ha_url: form.querySelector('#ha_url').value,
                 ha_token: form.querySelector('#ha_token').value,
                 ha_entity_power: form.querySelector('#ha_entity_power').value,
@@ -425,8 +433,15 @@ String WebServerManager::generateIndexHtml() {
     String dataSource = String(pConfig->currentConfig.data_source);
     String options = "";
     options += (dataSource == "HomeAssistant") ? "<option value=\"HomeAssistant\" selected>Home Assistant</option>" : "<option value=\"HomeAssistant\">Home Assistant</option>";
-    options += (dataSource == "Shelly") ? "<option value=\"Shelly\" selected>Shelly 3EM</option>" : "<option value=\"Shelly\">Shelly 3EM</option>";
+    options += (dataSource == "ShellyGen1") ? "<option value=\"ShellyGen1\" selected>Shelly 3EM (Gen 1)</option>" : "<option value=\"ShellyGen1\">Shelly 3EM (Gen 1)</option>";
+    options += (dataSource == "ShellyGen2") ? "<option value=\"ShellyGen2\" selected>Shelly 3EM (Gen 2/3)</option>" : "<option value=\"ShellyGen2\">Shelly 3EM (Gen 2/3)</option>";
     html.replace("%DATA_SOURCE_OPTIONS%", options);
+
+    // Shelly channel selector
+    int ch = pConfig->currentConfig.shelly_channel;
+    html.replace("%SHELLY_CH0_SEL%", ch == 0 ? "selected" : "");
+    html.replace("%SHELLY_CH1_SEL%", ch == 1 ? "selected" : "");
+    html.replace("%SHELLY_CH2_SEL%", ch == 2 ? "selected" : "");
 
     // Placeholders for current Wi-Fi configuration (for the dropdown and JS)
     String currentSsid = String(pConfig->currentConfig.ssid);
@@ -505,12 +520,18 @@ void WebServerManager::handleSaveWifi() {
 }
 
 void WebServerManager::handleSaveHomeAssistant() {
-    // Save data source and Shelly URL as well as Home Assistant fields
+    // Save data source, Shelly URL, channel, as well as Home Assistant fields
     if (server.hasArg("data_source")) {
         server.arg("data_source").toCharArray(pConfig->currentConfig.data_source, sizeof(pConfig->currentConfig.data_source));
     }
     if (server.hasArg("shelly_url")) {
         server.arg("shelly_url").toCharArray(pConfig->currentConfig.shelly_url, sizeof(pConfig->currentConfig.shelly_url));
+    }
+    if (server.hasArg("shelly_channel")) {
+        pConfig->currentConfig.shelly_channel = server.arg("shelly_channel").toInt();
+        // Clamp to valid range
+        if (pConfig->currentConfig.shelly_channel < 0) pConfig->currentConfig.shelly_channel = 0;
+        if (pConfig->currentConfig.shelly_channel > 2) pConfig->currentConfig.shelly_channel = 2;
     }
 
     if (server.hasArg("ha_url")) {

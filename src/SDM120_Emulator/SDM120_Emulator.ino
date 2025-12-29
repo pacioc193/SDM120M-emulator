@@ -4,6 +4,7 @@
 #include "WiFiManager.h"
 #include "HomeAssistantClient.h"
 #include "ShellyClient.h"
+#include "ShellyGen2Client.h"
 #include "WebServerManager.h"
 #include "Logger.h"
 #include "ModbusManager.h"
@@ -13,6 +14,7 @@ ConfigManager configManager;
 WiFiManager wifiManager;
 HomeAssistantClient haClientObj;
 ShellyClient shellyClientObj;
+ShellyGen2Client shellyGen2ClientObj;
 DataManager* pxDataClient = nullptr;
 WebServerManager webServer;
 Logger& logger = Logger::getInstance(); 
@@ -41,15 +43,19 @@ void setup() {
 
     // Choose data source based on stored config
     String ds = String(configManager.currentConfig.data_source);
-    if (ds == "Shelly") {
-        webServer.begin(configManager, wifiManager, &shellyClientObj);
-        modbusManager.begin(shellyClientObj, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
-		pxDataClient = &shellyClientObj;
+    if (ds == "ShellyGen1") {
+        pxDataClient = &shellyClientObj;
+        logger.log(LOG_TAG_GENERIC, "Data source: Shelly 3EM (Gen 1)");
+    } else if (ds == "ShellyGen2") {
+        pxDataClient = &shellyGen2ClientObj;
+        logger.log(LOG_TAG_GENERIC, "Data source: Shelly 3EM (Gen 2/3)");
     } else {
-        webServer.begin(configManager, wifiManager, &haClientObj);
-        modbusManager.begin(haClientObj, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
-		pxDataClient = &haClientObj;
+        pxDataClient = &haClientObj;
+        logger.log(LOG_TAG_GENERIC, "Data source: Home Assistant");
     }
+
+    webServer.begin(configManager, wifiManager, pxDataClient);
+    modbusManager.begin(*pxDataClient, 1, MODBUS_RTU_RX_PIN, MODBUS_RTU_TX_PIN, MODBUS_RTU_DE_RE_PIN, SDM_UART_BAUD);
 
     // --- Inizializzazione ArduinoOTA ---
     ArduinoOTA.setHostname("SDM120_ESP32");

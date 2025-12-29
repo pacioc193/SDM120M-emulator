@@ -15,8 +15,9 @@ struct Config {
     char home_assistant_entity_energy[64];
     char home_assistant_entity_frequency[64];
     char home_assistant_entity_power_factor[64];
-    char data_source[16]; // e.g. "HomeAssistant" or "Shelly"
+    char data_source[16]; // "HomeAssistant", "ShellyGen1", "ShellyGen2"
     char shelly_url[64];
+    int shelly_channel; // 0=A, 1=B, 2=C for Shelly 3EM channel selection
     bool configured;
 };
 

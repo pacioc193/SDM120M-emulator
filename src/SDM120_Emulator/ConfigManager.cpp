@@ -12,14 +12,26 @@ void ConfigManager::load() {
     // Sanitize strings
     currentConfig.ssid[sizeof(currentConfig.ssid) - 1] = '\0';
     currentConfig.password[sizeof(currentConfig.password) - 1] = '\0';
-	currentConfig.home_assistant_entity_power[sizeof(currentConfig.home_assistant_entity_power) - 1] = '\0';
-	currentConfig.home_assistant_entity_energy[sizeof(currentConfig.home_assistant_entity_energy) - 1] = '\0';
-	currentConfig.home_assistant_entity_voltage[sizeof(currentConfig.home_assistant_entity_voltage) - 1] = '\0';
-	currentConfig.home_assistant_entity_current[sizeof(currentConfig.home_assistant_entity_current) - 1] = '\0';
-	currentConfig.home_assistant_entity_frequency[sizeof(currentConfig.home_assistant_entity_frequency) - 1] = '\0';
+    currentConfig.home_assistant_entity_power[sizeof(currentConfig.home_assistant_entity_power) - 1] = '\0';
+    currentConfig.home_assistant_entity_energy[sizeof(currentConfig.home_assistant_entity_energy) - 1] = '\0';
+    currentConfig.home_assistant_entity_voltage[sizeof(currentConfig.home_assistant_entity_voltage) - 1] = '\0';
+    currentConfig.home_assistant_entity_current[sizeof(currentConfig.home_assistant_entity_current) - 1] = '\0';
+    currentConfig.home_assistant_entity_frequency[sizeof(currentConfig.home_assistant_entity_frequency) - 1] = '\0';
     currentConfig.home_assistant_entity_power_factor[sizeof(currentConfig.home_assistant_entity_power_factor) - 1] = '\0';
-	currentConfig.home_assistant_token[sizeof(currentConfig.home_assistant_token) - 1] = '\0';
-	currentConfig.home_assistant_url[sizeof(currentConfig.home_assistant_url) - 1] = '\0';
+    currentConfig.home_assistant_token[sizeof(currentConfig.home_assistant_token) - 1] = '\0';
+    currentConfig.home_assistant_url[sizeof(currentConfig.home_assistant_url) - 1] = '\0';
+    currentConfig.data_source[sizeof(currentConfig.data_source) - 1] = '\0';
+    currentConfig.shelly_url[sizeof(currentConfig.shelly_url) - 1] = '\0';
+
+    // Sanitize shelly_channel
+    if (currentConfig.shelly_channel < 0 || currentConfig.shelly_channel > 2) {
+        currentConfig.shelly_channel = 0;
+    }
+
+    // Migrate old "Shelly" data_source to "ShellyGen1"
+    if (strcmp(currentConfig.data_source, "Shelly") == 0) {
+        strcpy(currentConfig.data_source, "ShellyGen1");
+    }
 
     // Load configuration from EEPROM
     if (!currentConfig.configured || strlen(currentConfig.ssid) == 0) {
@@ -46,5 +58,6 @@ void ConfigManager::reset() {
 
 void ConfigManager::setDefaultConfig() {
     memset(&currentConfig, 0, sizeof(Config)); // Clear the structure
+    currentConfig.shelly_channel = 0;
     currentConfig.configured = false;
 }

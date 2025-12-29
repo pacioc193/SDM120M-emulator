@@ -27,6 +27,11 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
         return;
     }
 
+    // Get channel from config
+    int channel = config.currentConfig.shelly_channel;
+    if (channel < 0) channel = 0;
+    if (channel > 2) channel = 2;
+
     // Shelly 3EM status endpoint typically at /status
     String api = url + "/status";
 
@@ -55,7 +60,7 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
     }
 
     // Shelly 3EM returns an "emeters" array, each entry has "power", "energy", "voltage", "current" etc.
-    // We'll read meter 0 by default.
+    // Use the configured channel.
 
     if (!doc.containsKey("emeters") || !doc["emeters"].is<JsonArray>()) {
         lastError = "emeters array missing";
@@ -70,7 +75,12 @@ void ShellyClient::fetchAllData(ConfigManager& config) {
         return;
     }
 
-    JsonObject m = emeters[0];
+    // Use configured channel, fallback to 0 if out of bounds
+    if ((size_t)channel >= emeters.size()) {
+        channel = 0;
+    }
+
+    JsonObject m = emeters[channel];
 
     // Fill data. Some fields may be missing; default to 0.
     currentData.power_w = m.containsKey("power") ? m["power"].as<float>() : 0.0f;
