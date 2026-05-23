@@ -15,7 +15,7 @@ private:
     void startAPMode();
     void connectToWiFi(const char* ssid, const char* password);
     String ap_ssid;
-    const char* ap_password = "password123";
+    const char* ap_password = "sdm120pass";
 };
 
 #endif
