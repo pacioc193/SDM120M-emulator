@@ -15,8 +15,10 @@
 #define SDM120_REG_APPARENT_POWER   0x0012 // 2 registers for float
 #define SDM120_REG_REACTIVE_POWER   0x0018 // 2 registers for float
 #define SDM120_REG_POWER_FACTOR     0x001E // 2 registers for float
-#define SDM120_REG_PHASE_ANGLE      0x0024 // 2 registers for float
-#define SDM120_REG_FREQUENCY        0x0046 // 2 registers for float
+//#define SDM120_REG_PHASE_ANGLE      0x0024 // 2 registers for float
+#define SDM120_REG_PHASE_ANGLE      0x002A // 2 registers for float
+//#define SDM120_REG_FREQUENCY        0x0046 // 2 registers for float
+#define SDM120_REG_FREQUENCY        0x0024 // 2 registers for float
 #define SDM120_REG_TOTAL_ACTIVE_ENERGY 0x0048 // 2 registers for float (kWh)
 
 // Modbus will consider the data source offline only after this timeout
