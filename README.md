@@ -129,6 +129,11 @@ Here you can find some images of the project in action, the hardware setup, and 
 
 Feel free to open issues, propose improvements, or submit pull requests! All contributions are welcome.
 
+### ✨ Contributors
+
+A special thanks to the people who contributed to this project:
+
+* **guba91** (First Contributor)
 ## 📄 License
 
 This project is released under the [MIT License](LICENSE). Apache 2.0
